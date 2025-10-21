@@ -1,102 +1,158 @@
-import { ref, computed } from 'vue';
+import { ref, computed } from 'vue'
+import { supabase } from '../lib/supabase'
 
 // Shared state
-const currentUser = ref(null);
+const currentUser = ref(null)
+const loading = ref(true)
 
-// Initialize from localStorage
-const initAuth = () => {
-  const savedUser = localStorage.getItem('learnai_user');
-  if (savedUser) {
-    currentUser.value = JSON.parse(savedUser);
+// Initialize auth state
+const initAuth = async () => {
+  try {
+    // Get current session
+    const { data: { session } } = await supabase.auth.getSession()
+
+    if (session?.user) {
+      await loadUserProfile(session.user)
+    }
+  } catch (error) {
+    console.error('Error initializing auth:', error.message)
+  } finally {
+    loading.value = false
   }
-};
+}
+
+// Load user profile from database
+const loadUserProfile = async (user) => {
+  try {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+
+    if (error) throw error
+
+    currentUser.value = {
+      id: user.id,
+      email: user.email,
+      username: profile.username,
+      avatar: profile.avatar,
+      createdAt: profile.created_at
+    }
+  } catch (error) {
+    console.error('Error loading profile:', error.message)
+  }
+}
+
+// Set up auth state listener
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_IN' && session?.user) {
+    await loadUserProfile(session.user)
+  } else if (event === 'SIGNED_OUT') {
+    currentUser.value = null
+  }
+})
+
+// Initialize on module load
+initAuth()
 
 export const useAuth = () => {
-  // Initialize on first use
-  if (currentUser.value === null && localStorage.getItem('learnai_user')) {
-    initAuth();
+  const isAuthenticated = computed(() => currentUser.value !== null)
+
+  const login = async (email, password) => {
+    // Validation
+    if (!email || !password) {
+      throw new Error('Email and password are required')
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
+
+      if (error) throw error
+
+      await loadUserProfile(data.user)
+
+      return { success: true, message: 'Login successful!' }
+    } catch (error) {
+      console.error('Login error:', error.message)
+      throw new Error(error.message || 'Invalid email or password')
+    }
   }
 
-  const isAuthenticated = computed(() => currentUser.value !== null);
-
-  const login = (username, password) => {
-    // Simple validation - in production, this would call an API
-    if (!username || !password) {
-      throw new Error('Username and password are required');
-    }
-
-    // Check if user exists in localStorage
-    const users = JSON.parse(localStorage.getItem('learnai_users') || '[]');
-    const user = users.find(u => u.username === username && u.password === password);
-
-    if (user) {
-      // User exists, log them in
-      const userWithoutPassword = { ...user };
-      delete userWithoutPassword.password;
-      currentUser.value = userWithoutPassword;
-      localStorage.setItem('learnai_user', JSON.stringify(userWithoutPassword));
-      return { success: true, message: 'Login successful!' };
-    } else {
-      throw new Error('Invalid username or password');
-    }
-  };
-
-  const signup = (username, email, password) => {
-    // Simple validation
+  const signup = async (username, email, password) => {
+    // Validation
     if (!username || !email || !password) {
-      throw new Error('All fields are required');
+      throw new Error('All fields are required')
     }
 
     if (username.length < 3) {
-      throw new Error('Username must be at least 3 characters');
+      throw new Error('Username must be at least 3 characters')
     }
 
     if (password.length < 6) {
-      throw new Error('Password must be at least 6 characters');
+      throw new Error('Password must be at least 6 characters')
     }
 
-    // Check if user already exists
-    const users = JSON.parse(localStorage.getItem('learnai_users') || '[]');
-    if (users.find(u => u.username === username)) {
-      throw new Error('Username already exists');
+    // Check if username is already taken
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('username', username)
+      .single()
+
+    if (existingProfile) {
+      throw new Error('Username already exists')
     }
 
-    if (users.find(u => u.email === email)) {
-      throw new Error('Email already registered');
+    try {
+      // Create auth user
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+          }
+        }
+      })
+
+      if (error) throw error
+
+      // Profile is automatically created by database trigger
+      await loadUserProfile(data.user)
+
+      return {
+        success: true,
+        message: 'Account created successfully!'
+      }
+    } catch (error) {
+      console.error('Signup error:', error.message)
+      throw new Error(error.message || 'Failed to create account')
     }
+  }
 
-    // Create new user
-    const newUser = {
-      id: Date.now().toString(),
-      username,
-      email,
-      password, // In production, this would be hashed
-      createdAt: new Date().toISOString(),
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`
-    };
+  const logout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
 
-    users.push(newUser);
-    localStorage.setItem('learnai_users', JSON.stringify(users));
-
-    // Log the user in
-    const userWithoutPassword = { ...newUser };
-    delete userWithoutPassword.password;
-    currentUser.value = userWithoutPassword;
-    localStorage.setItem('learnai_user', JSON.stringify(userWithoutPassword));
-
-    return { success: true, message: 'Account created successfully!' };
-  };
-
-  const logout = () => {
-    currentUser.value = null;
-    localStorage.removeItem('learnai_user');
-  };
+      currentUser.value = null
+    } catch (error) {
+      console.error('Logout error:', error.message)
+      throw new Error('Failed to log out')
+    }
+  }
 
   return {
     currentUser,
     isAuthenticated,
+    loading,
     login,
     signup,
     logout
-  };
-};
+  }
+}

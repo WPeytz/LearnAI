@@ -18,7 +18,7 @@
             {{ successMessage }}
           </div>
 
-          <div v-if="!isLoginMode" class="form-group">
+          <div class="form-group">
             <label for="email">Email</label>
             <input
               id="email"
@@ -29,7 +29,7 @@
             />
           </div>
 
-          <div class="form-group">
+          <div v-if="!isLoginMode" class="form-group">
             <label for="username">Username</label>
             <input
               id="username"
@@ -123,14 +123,14 @@ const handleSubmit = async () => {
 
   try {
     if (isLoginMode.value) {
-      const result = login(formData.value.username, formData.value.password);
+      const result = await login(formData.value.email, formData.value.password);
       successMessage.value = result.message;
       setTimeout(() => {
         emit('success');
         closeModal();
       }, 1000);
     } else {
-      const result = signup(
+      const result = await signup(
         formData.value.username,
         formData.value.email,
         formData.value.password
