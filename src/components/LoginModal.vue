@@ -122,19 +122,28 @@ const handleSubmit = async () => {
   isLoading.value = true;
 
   try {
+    console.log('🚀 Starting login/signup process...');
+
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timed out. Please try again.')), 15000);
+    });
+
     if (isLoginMode.value) {
-      const result = await login(formData.value.email, formData.value.password);
+      const result = await Promise.race([
+        login(formData.value.email, formData.value.password),
+        timeoutPromise
+      ]);
       successMessage.value = result.message;
       setTimeout(() => {
         emit('success');
         closeModal();
       }, 1000);
     } else {
-      const result = await signup(
-        formData.value.username,
-        formData.value.email,
-        formData.value.password
-      );
+      const result = await Promise.race([
+        signup(formData.value.username, formData.value.email, formData.value.password),
+        timeoutPromise
+      ]);
       successMessage.value = result.message;
       setTimeout(() => {
         emit('success');
@@ -142,6 +151,7 @@ const handleSubmit = async () => {
       }, 1000);
     }
   } catch (error) {
+    console.error('❌ Login/signup failed:', error);
     errorMessage.value = error.message;
   } finally {
     isLoading.value = false;

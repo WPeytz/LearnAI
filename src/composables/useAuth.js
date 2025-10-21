@@ -106,18 +106,27 @@ export const useAuth = () => {
     }
 
     try {
+      console.log('🔐 Attempting login for:', email)
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Auth error:', error)
+        throw error
+      }
+
+      console.log('✅ Authentication successful, loading profile...')
 
       await loadUserProfile(data.user)
 
+      console.log('✅ Login complete!')
+
       return { success: true, message: 'Login successful!' }
     } catch (error) {
-      console.error('Login error:', error.message)
+      console.error('❌ Login error:', error)
       throw new Error(error.message || 'Invalid email or password')
     }
   }
