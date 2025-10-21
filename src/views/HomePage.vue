@@ -97,11 +97,19 @@
         </div>
       </div>
     </section>
+
+    <!-- Newsletter Section -->
+    <section class="newsletter-section">
+      <div class="container">
+        <NewsletterSignup />
+      </div>
+    </section>
   </MainLayout>
 </template>
 
 <script setup>
 import { computed } from 'vue';
+import NewsletterSignup from '../components/NewsletterSignup.vue';
 import MainLayout from '../components/MainLayout.vue';
 import ArticleCard from '../components/ArticleCard.vue';
 import { articles, categories } from '../data/articles';
@@ -375,6 +383,18 @@ const getCategoryIcon = (categoryName) => {
 
   .articles-grid-regular {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Newsletter Section */
+.newsletter-section {
+  padding: 4rem 0;
+  background: var(--bg-primary);
+}
+
+@media (max-width: 768px) {
+  .newsletter-section {
+    padding: 2rem 0;
   }
 }
 </style>

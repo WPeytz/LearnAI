@@ -24,8 +24,13 @@
           <!-- User Info Bar -->
           <div class="user-info-bar">
             <div class="user-info">
-              <img :src="currentUser.avatar" :alt="currentUser.username" class="user-avatar" />
-              <div>
+              <AvatarUpload
+                v-if="currentUser"
+                :username="currentUser.username"
+                :current-avatar="currentUser.avatar"
+                @avatar-updated="handleAvatarUpdate"
+              />
+              <div class="user-details">
                 <div class="user-name">{{ currentUser.username }}</div>
                 <div class="user-meta">Member since {{ formatDate(currentUser.createdAt) }}</div>
               </div>
@@ -193,6 +198,7 @@
 import { ref } from 'vue';
 import MainLayout from '../components/MainLayout.vue';
 import LoginModal from '../components/LoginModal.vue';
+import AvatarUpload from '../components/AvatarUpload.vue';
 import { useAuth } from '../composables/useAuth';
 import { usePosts } from '../composables/usePosts';
 
@@ -224,6 +230,14 @@ const handleLogout = async () => {
   if (confirm('Are you sure you want to sign out?')) {
     await logout();
   }
+};
+
+const handleAvatarUpdate = (newAvatarUrl) => {
+  // Update the current user's avatar in the local state
+  if (currentUser.value) {
+    currentUser.value.avatar = newAvatarUrl;
+  }
+  console.log('Avatar updated to:', newAvatarUrl);
 };
 
 const handleCreatePost = async () => {
@@ -410,6 +424,12 @@ const handleDeleteComment = async (commentId, postId) => {
   height: 3rem;
   border-radius: 50%;
   border: 2px solid var(--accent-color);
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .user-name {

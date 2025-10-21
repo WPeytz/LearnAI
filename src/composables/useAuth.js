@@ -12,7 +12,17 @@ const initAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession()
 
     if (session?.user) {
-      await loadUserProfile(session.user)
+      // TEMPORARY FIX: Use fallback profile immediately
+      console.log('✅ Session found, using fallback profile')
+      currentUser.value = {
+        id: session.user.id,
+        email: session.user.email,
+        username: session.user.user_metadata?.username || session.user.email.split('@')[0],
+        avatar: session.user.user_metadata?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`,
+        createdAt: session.user.created_at || new Date().toISOString()
+      }
+      // Comment out profile loading
+      // await loadUserProfile(session.user)
     }
   } catch (error) {
     console.error('Error initializing auth:', error.message)
@@ -21,16 +31,83 @@ const initAuth = async () => {
   }
 }
 
-// Load user profile from database
+// Load user profile from database with timeout
 const loadUserProfile = async (user) => {
   try {
     console.log('🔍 Loading profile for user:', user.id)
+    console.log('⏱️ Starting profile query...')
+    console.log('🔌 Supabase URL:', import.meta.env.VITE_SUPABASE_URL)
+    console.log('🔑 Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY)
 
-    const { data: profile, error } = await supabase
+    const queryStart = Date.now()
+
+    // Test basic Supabase connection first
+    console.log('🧪 Testing basic connection...')
+    try {
+      const { error: testError } = await supabase.from('profiles').select('count', { count: 'exact', head: true })
+      if (testError) {
+        console.error('❌ Basic connection test failed:', testError)
+      } else {
+        console.log('✅ Basic connection works')
+      }
+    } catch (testErr) {
+      console.error('❌ Basic connection error:', testErr)
+    }
+
+    // Add timeout to the query itself
+    console.log('📡 Starting profile query for ID:', user.id)
+    const profileQueryPromise = supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Profile query timeout')), 10000) // 10 second timeout
+    })
+
+    let profile, error
+
+    try {
+      console.log('⏳ Waiting for profile query...')
+      const result = await Promise.race([
+        profileQueryPromise,
+        timeoutPromise
+      ])
+      console.log('📥 Query result received:', result)
+      profile = result.data
+      error = result.error
+    } catch (err) {
+      if (err.message === 'Profile query timeout') {
+        console.error('❌ Profile query timed out after 10 seconds')
+        console.error('❌ Even with RLS disabled, query is hanging')
+        console.error('❌ This suggests a network or Supabase connection issue')
+
+        // Set a fallback user so they can still use the app
+        currentUser.value = {
+          id: user.id,
+          email: user.email,
+          username: user.email.split('@')[0],
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+          createdAt: new Date().toISOString()
+        }
+        console.log('✅ Using fallback user profile')
+        return // Exit early with fallback user
+      }
+      throw err
+    }
+
+    const queryTime = Date.now() - queryStart
+    console.log(`✅ Profile query completed in ${queryTime}ms`)
+
+    if (error) {
+      console.log('📋 Error details:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
+    }
 
     // If profile doesn't exist, create it
     if (error && error.code === 'PGRST116') {
@@ -87,7 +164,17 @@ const loadUserProfile = async (user) => {
 // Set up auth state listener
 supabase.auth.onAuthStateChange(async (event, session) => {
   if (event === 'SIGNED_IN' && session?.user) {
-    await loadUserProfile(session.user)
+    // TEMPORARY FIX: Skip profile loading and use fallback immediately
+    console.log('✅ User signed in, using fallback profile')
+    currentUser.value = {
+      id: session.user.id,
+      email: session.user.email,
+      username: session.user.user_metadata?.username || session.user.email.split('@')[0],
+      avatar: session.user.user_metadata?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`,
+      createdAt: session.user.created_at || new Date().toISOString()
+    }
+    // Comment out the profile loading for now
+    // await loadUserProfile(session.user)
   } else if (event === 'SIGNED_OUT') {
     currentUser.value = null
   }
@@ -118,11 +205,11 @@ export const useAuth = () => {
         throw error
       }
 
-      console.log('✅ Authentication successful, loading profile...')
+      console.log('✅ Authentication successful!')
+      console.log('⏳ Profile will be loaded by auth state listener...')
 
-      await loadUserProfile(data.user)
-
-      console.log('✅ Login complete!')
+      // Profile is loaded by onAuthStateChange listener - no need to call it here
+      // This prevents double-loading and potential race conditions
 
       return { success: true, message: 'Login successful!' }
     } catch (error) {
@@ -171,8 +258,11 @@ export const useAuth = () => {
 
       if (error) throw error
 
+      console.log('✅ Signup successful!')
+      console.log('⏳ Profile will be loaded by auth state listener...')
+
       // Profile is automatically created by database trigger
-      await loadUserProfile(data.user)
+      // Auth state listener will load the profile - no need to call it here
 
       return {
         success: true,

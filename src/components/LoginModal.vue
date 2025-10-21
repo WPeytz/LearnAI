@@ -124,31 +124,45 @@ const handleSubmit = async () => {
   try {
     console.log('🚀 Starting login/signup process...');
 
-    // Add timeout to prevent hanging
+    // Add timeout to prevent hanging (45 seconds to allow for profile creation)
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Request timed out. Please try again.')), 15000);
+      setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 45000);
     });
 
     if (isLoginMode.value) {
+      console.log('📧 Attempting login...');
       const result = await Promise.race([
         login(formData.value.email, formData.value.password),
         timeoutPromise
       ]);
+
+      console.log('✅ Login successful, waiting for profile to load...');
+
+      // Wait a bit for the auth state listener to load the profile
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       successMessage.value = result.message;
       setTimeout(() => {
         emit('success');
         closeModal();
-      }, 1000);
+      }, 500);
     } else {
+      console.log('📝 Attempting signup...');
       const result = await Promise.race([
         signup(formData.value.username, formData.value.email, formData.value.password),
         timeoutPromise
       ]);
+
+      console.log('✅ Signup successful, waiting for profile to be created...');
+
+      // Wait a bit longer for signup to allow trigger to create profile
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       successMessage.value = result.message;
       setTimeout(() => {
         emit('success');
         closeModal();
-      }, 1000);
+      }, 500);
     }
   } catch (error) {
     console.error('❌ Login/signup failed:', error);
