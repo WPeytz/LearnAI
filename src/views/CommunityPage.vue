@@ -107,10 +107,72 @@
                   <span class="action-text">{{ post.likes }}</span>
                 </button>
 
-                <button class="action-btn" disabled>
+                <button
+                  @click="handleToggleComments(post.id)"
+                  class="action-btn"
+                  :class="{ active: areCommentsExpanded(post.id) }"
+                >
                   <span class="action-icon">💬</span>
-                  <span class="action-text">0</span>
+                  <span class="action-text">{{ post.commentCount || 0 }}</span>
                 </button>
+              </div>
+
+              <!-- Comments Section -->
+              <div v-if="areCommentsExpanded(post.id)" class="comments-section">
+                <!-- Comment Input -->
+                <div v-if="isAuthenticated" class="comment-input-wrapper">
+                  <img :src="currentUser.avatar" :alt="currentUser.username" class="comment-avatar" />
+                  <div class="comment-input-box">
+                    <textarea
+                      v-model="newCommentContent[post.id]"
+                      placeholder="Write a comment..."
+                      rows="2"
+                      maxlength="500"
+                      @keydown.enter.ctrl="handleCreateComment(post.id)"
+                    ></textarea>
+                    <div class="comment-input-footer">
+                      <span class="char-count-small">
+                        {{ (newCommentContent[post.id] || '').length }} / 500
+                      </span>
+                      <button
+                        @click="handleCreateComment(post.id)"
+                        :disabled="!newCommentContent[post.id]?.trim()"
+                        class="comment-btn"
+                      >
+                        Comment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Comments List -->
+                <div class="comments-list">
+                  <div v-if="getCommentsForPost(post.id).length === 0" class="no-comments">
+                    No comments yet. Be the first to comment!
+                  </div>
+                  <div
+                    v-for="comment in getCommentsForPost(post.id)"
+                    :key="comment.id"
+                    class="comment-item"
+                  >
+                    <img :src="comment.author.avatar" :alt="comment.author.username" class="comment-avatar" />
+                    <div class="comment-content-wrapper">
+                      <div class="comment-header">
+                        <span class="comment-author">{{ comment.author.username }}</span>
+                        <span class="comment-time">{{ getTimeAgo(comment.timestamp) }}</span>
+                        <button
+                          v-if="isAuthenticated && currentUser.id === comment.author.id"
+                          @click="handleDeleteComment(comment.id, post.id)"
+                          class="delete-comment-btn"
+                          title="Delete comment"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                      <div class="comment-text">{{ comment.content }}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -135,10 +197,24 @@ import { useAuth } from '../composables/useAuth';
 import { usePosts } from '../composables/usePosts';
 
 const { currentUser, isAuthenticated, logout } = useAuth();
-const { posts, loading, createPost, deletePost, toggleLike, hasUserLiked, getTimeAgo } = usePosts();
+const {
+  posts,
+  loading,
+  createPost,
+  deletePost,
+  toggleLike,
+  hasUserLiked,
+  createComment,
+  deleteComment,
+  toggleComments,
+  areCommentsExpanded,
+  getCommentsForPost,
+  getTimeAgo
+} = usePosts();
 
 const showLoginModal = ref(false);
 const newPostContent = ref('');
+const newCommentContent = ref({}); // Track comment input for each post
 
 const handleLoginSuccess = () => {
   showLoginModal.value = false;
@@ -196,6 +272,38 @@ const formatDate = (dateString) => {
     month: 'short',
     year: 'numeric'
   });
+};
+
+const handleToggleComments = async (postId) => {
+  if (!isAuthenticated.value && !areCommentsExpanded(postId)) {
+    showLoginModal.value = true;
+    return;
+  }
+  await toggleComments(postId);
+};
+
+const handleCreateComment = async (postId) => {
+  const content = newCommentContent.value[postId];
+  if (!content || !content.trim()) return;
+
+  try {
+    await createComment(postId, content, currentUser.value.id);
+    newCommentContent.value[postId] = '';
+  } catch (error) {
+    console.error('Error creating comment:', error);
+    alert(error.message || 'Failed to create comment. Please try again.');
+  }
+};
+
+const handleDeleteComment = async (commentId, postId) => {
+  if (confirm('Are you sure you want to delete this comment?')) {
+    try {
+      await deleteComment(commentId, currentUser.value.id, postId);
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      alert(error.message || 'Failed to delete comment. Please try again.');
+    }
+  }
 };
 </script>
 
@@ -588,5 +696,155 @@ const formatDate = (dateString) => {
     gap: 0.5rem;
     align-items: flex-start;
   }
+}
+
+/* Comments Section */
+.comments-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.comment-input-wrapper {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.comment-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.comment-input-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comment-input-box textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s;
+}
+
+.comment-input-box textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.comment-input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.char-count-small {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.comment-btn {
+  padding: 0.5rem 1rem;
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.comment-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.comment-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.no-comments {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.comment-item {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.comment-content-wrapper {
+  flex: 1;
+  background: var(--bg-primary);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.comment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.comment-author {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.comment-time {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.delete-comment-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: all 0.2s;
+  padding: 0.25rem;
+}
+
+.delete-comment-btn:hover {
+  opacity: 1;
+}
+
+.comment-text {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.action-btn.active {
+  background: var(--bg-primary);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
 }
 </style>

@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase'
 const posts = ref([])
 const loading = ref(false)
 const userLikes = ref(new Set()) // Track which posts current user has liked
+const postComments = ref({}) // Track comments per post { postId: [comments] }
+const expandedPosts = ref(new Set()) // Track which posts have expanded comments
 
 // Fetch posts from database
 const fetchPosts = async () => {
@@ -80,6 +82,9 @@ const fetchLikeCounts = async () => {
       ...post,
       likes: likeCounts[post.id] || 0
     }))
+
+    // Also fetch comment counts
+    await fetchCommentCounts()
   } catch (error) {
     console.error('Error fetching like counts:', error.message)
   }
@@ -109,6 +114,148 @@ const hasUserLiked = (postId) => {
   return userLikes.value.has(postId)
 }
 
+// Fetch comment counts for all posts
+const fetchCommentCounts = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('post_comments')
+      .select('post_id')
+
+    if (error) throw error
+
+    // Count comments per post
+    const commentCounts = data.reduce((acc, comment) => {
+      acc[comment.post_id] = (acc[comment.post_id] || 0) + 1
+      return acc
+    }, {})
+
+    // Add comment counts to posts
+    posts.value = posts.value.map(post => ({
+      ...post,
+      commentCount: commentCounts[post.id] || 0
+    }))
+  } catch (error) {
+    console.error('Error fetching comment counts:', error.message)
+  }
+}
+
+// Fetch comments for a specific post
+const fetchCommentsForPost = async (postId) => {
+  try {
+    const { data, error } = await supabase
+      .from('post_comments')
+      .select(`
+        id,
+        content,
+        created_at,
+        user_id,
+        profiles (
+          id,
+          username,
+          avatar
+        )
+      `)
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true })
+
+    if (error) throw error
+
+    // Transform data
+    postComments.value[postId] = data
+      .filter(comment => comment.profiles)
+      .map(comment => ({
+        id: comment.id,
+        content: comment.content,
+        timestamp: comment.created_at,
+        author: {
+          id: comment.profiles.id,
+          username: comment.profiles.username,
+          avatar: comment.profiles.avatar
+        },
+        userId: comment.user_id
+      }))
+  } catch (error) {
+    console.error('Error fetching comments:', error.message)
+  }
+}
+
+// Create a new comment
+const createComment = async (postId, content, userId) => {
+  if (!content || !content.trim()) {
+    throw new Error('Comment cannot be empty')
+  }
+
+  if (content.length > 500) {
+    throw new Error('Comment must be 500 characters or less')
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('post_comments')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+        content: content.trim()
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Refresh comments for this post
+    await fetchCommentsForPost(postId)
+    await fetchCommentCounts()
+
+    return data
+  } catch (error) {
+    console.error('Error creating comment:', error.message)
+    throw new Error(error.message || 'Failed to create comment')
+  }
+}
+
+// Delete a comment
+const deleteComment = async (commentId, userId, postId) => {
+  try {
+    const { error } = await supabase
+      .from('post_comments')
+      .delete()
+      .eq('id', commentId)
+      .eq('user_id', userId)
+
+    if (error) throw error
+
+    // Refresh comments for this post
+    await fetchCommentsForPost(postId)
+    await fetchCommentCounts()
+  } catch (error) {
+    console.error('Error deleting comment:', error.message)
+    throw new Error('Failed to delete comment')
+  }
+}
+
+// Toggle comments visibility for a post
+const toggleComments = async (postId) => {
+  if (expandedPosts.value.has(postId)) {
+    expandedPosts.value.delete(postId)
+  } else {
+    expandedPosts.value.add(postId)
+    // Fetch comments if not already loaded
+    if (!postComments.value[postId]) {
+      await fetchCommentsForPost(postId)
+    }
+  }
+}
+
+// Check if comments are expanded for a post
+const areCommentsExpanded = (postId) => {
+  return expandedPosts.value.has(postId)
+}
+
+// Get comments for a post
+const getCommentsForPost = (postId) => {
+  return postComments.value[postId] || []
+}
+
 // Set up real-time subscription
 const subscribeToChanges = () => {
   const channel = supabase
@@ -129,6 +276,21 @@ const subscribeToChanges = () => {
       // Refetch like counts when likes change
       fetchLikeCounts()
       fetchUserLikes()
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'post_comments'
+    }, (payload) => {
+      // Refetch comment counts when comments change
+      fetchCommentCounts()
+      // If comments are expanded for this post, refresh them
+      if (payload.new?.post_id && expandedPosts.value.has(payload.new.post_id)) {
+        fetchCommentsForPost(payload.new.post_id)
+      }
+      if (payload.old?.post_id && expandedPosts.value.has(payload.old.post_id)) {
+        fetchCommentsForPost(payload.old.post_id)
+      }
     })
     .subscribe()
 
@@ -308,6 +470,11 @@ export const usePosts = () => {
     unlikePost,
     toggleLike,
     hasUserLiked,
+    createComment,
+    deleteComment,
+    toggleComments,
+    areCommentsExpanded,
+    getCommentsForPost,
     getTimeAgo,
     refreshPosts
   }
