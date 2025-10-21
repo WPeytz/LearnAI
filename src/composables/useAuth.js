@@ -24,13 +24,51 @@ const initAuth = async () => {
 // Load user profile from database
 const loadUserProfile = async (user) => {
   try {
+    console.log('🔍 Loading profile for user:', user.id)
+
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
 
+    // If profile doesn't exist, create it
+    if (error && error.code === 'PGRST116') {
+      console.log('⚠️ Profile not found, creating new profile...')
+
+      const username = user.user_metadata?.username || user.email.split('@')[0]
+      const avatar = user.user_metadata?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`
+
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          username,
+          avatar
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('❌ Failed to create profile:', createError)
+        throw createError
+      }
+
+      console.log('✅ Profile created successfully')
+
+      currentUser.value = {
+        id: user.id,
+        email: user.email,
+        username: newProfile.username,
+        avatar: newProfile.avatar,
+        createdAt: newProfile.created_at
+      }
+      return
+    }
+
     if (error) throw error
+
+    console.log('✅ Profile loaded successfully')
 
     currentUser.value = {
       id: user.id,
@@ -40,7 +78,9 @@ const loadUserProfile = async (user) => {
       createdAt: profile.created_at
     }
   } catch (error) {
-    console.error('Error loading profile:', error.message)
+    console.error('❌ Error loading profile:', error.message)
+    // Re-throw so login/signup can handle it
+    throw error
   }
 }
 

@@ -10,6 +10,8 @@ const userLikes = ref(new Set()) // Track which posts current user has liked
 const fetchPosts = async () => {
   loading.value = true
   try {
+    console.log('📥 Fetching posts from Supabase...')
+
     const { data, error } = await supabase
       .from('posts')
       .select(`
@@ -17,7 +19,7 @@ const fetchPosts = async () => {
         content,
         created_at,
         user_id,
-        profiles!posts_user_id_fkey (
+        profiles (
           id,
           username,
           avatar
@@ -27,18 +29,24 @@ const fetchPosts = async () => {
 
     if (error) throw error
 
+    console.log('✅ Posts fetched:', data?.length || 0)
+
     // Transform data to match expected format
-    posts.value = data.map(post => ({
-      id: post.id,
-      content: post.content,
-      timestamp: post.created_at,
-      author: {
-        id: post.profiles.id,
-        username: post.profiles.username,
-        avatar: post.profiles.avatar
-      },
-      userId: post.user_id // Keep for permission checks
-    }))
+    posts.value = data
+      .filter(post => post.profiles) // Filter out posts with missing profiles
+      .map(post => ({
+        id: post.id,
+        content: post.content,
+        timestamp: post.created_at,
+        author: {
+          id: post.profiles.id,
+          username: post.profiles.username,
+          avatar: post.profiles.avatar
+        },
+        userId: post.user_id // Keep for permission checks
+      }))
+
+    console.log('📊 Posts after profile filtering:', posts.value.length)
 
     // Fetch like counts for all posts
     await fetchLikeCounts()
@@ -46,7 +54,7 @@ const fetchPosts = async () => {
     // Fetch current user's likes
     await fetchUserLikes()
   } catch (error) {
-    console.error('Error fetching posts:', error.message)
+    console.error('❌ Error fetching posts:', error.message)
   } finally {
     loading.value = false
   }
@@ -149,6 +157,8 @@ export const usePosts = () => {
     }
 
     try {
+      console.log('📝 Creating post...', { userId, contentLength: content.length })
+
       const { data, error } = await supabase
         .from('posts')
         .insert({
@@ -158,13 +168,20 @@ export const usePosts = () => {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Post creation error:', error)
+        throw error
+      }
 
-      // Posts will be updated via real-time subscription
+      console.log('✅ Post created successfully:', data)
+
+      // Manually refresh posts since real-time might be delayed
+      await fetchPosts()
+
       return data
     } catch (error) {
-      console.error('Error creating post:', error.message)
-      throw new Error('Failed to create post')
+      console.error('❌ Error creating post:', error.message)
+      throw new Error(error.message || 'Failed to create post')
     }
   }
 

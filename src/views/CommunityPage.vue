@@ -109,7 +109,7 @@
 
                 <button class="action-btn" disabled>
                   <span class="action-icon">💬</span>
-                  <span class="action-text">{{ post.comments.length }}</span>
+                  <span class="action-text">0</span>
                 </button>
               </div>
             </div>
@@ -135,60 +135,60 @@ import { useAuth } from '../composables/useAuth';
 import { usePosts } from '../composables/usePosts';
 
 const { currentUser, isAuthenticated, logout } = useAuth();
-const { posts, createPost, deletePost, likePost, getTimeAgo } = usePosts();
+const { posts, loading, createPost, deletePost, toggleLike, hasUserLiked, getTimeAgo } = usePosts();
 
 const showLoginModal = ref(false);
 const newPostContent = ref('');
-const likedPosts = ref(new Set());
 
 const handleLoginSuccess = () => {
   showLoginModal.value = false;
 };
 
-const handleLogout = () => {
+const handleLogout = async () => {
   if (confirm('Are you sure you want to sign out?')) {
-    logout();
+    await logout();
   }
 };
 
-const handleCreatePost = () => {
+const handleCreatePost = async () => {
   if (!newPostContent.value.trim()) return;
 
   try {
-    createPost(newPostContent.value, currentUser.value);
+    await createPost(newPostContent.value, currentUser.value.id);
     newPostContent.value = '';
   } catch (error) {
-    alert(error.message);
+    console.error('Error creating post:', error);
+    alert(error.message || 'Failed to create post. Please try again.');
   }
 };
 
-const handleDeletePost = (postId) => {
+const handleDeletePost = async (postId) => {
   if (confirm('Are you sure you want to delete this post?')) {
     try {
-      deletePost(postId, currentUser.value.id);
+      await deletePost(postId, currentUser.value.id);
     } catch (error) {
-      alert(error.message);
+      console.error('Error deleting post:', error);
+      alert(error.message || 'Failed to delete post. Please try again.');
     }
   }
 };
 
-const handleLike = (postId) => {
+const handleLike = async (postId) => {
   if (!isAuthenticated.value) {
     showLoginModal.value = true;
     return;
   }
 
-  if (likedPosts.value.has(postId)) {
-    likedPosts.value.delete(postId);
-    // Note: In a real app, you'd track this per user in the backend
-  } else {
-    likedPosts.value.add(postId);
-    likePost(postId);
+  try {
+    await toggleLike(postId);
+  } catch (error) {
+    console.error('Error toggling like:', error);
+    alert(error.message || 'Failed to update like. Please try again.');
   }
 };
 
 const hasLiked = (postId) => {
-  return likedPosts.value.has(postId);
+  return hasUserLiked(postId);
 };
 
 const formatDate = (dateString) => {
