@@ -8,6 +8,8 @@
       <nav class="nav">
         <router-link to="/" class="nav-link">Home</router-link>
         <router-link to="/articles" class="nav-link">Articles</router-link>
+        <router-link to="/quiz" class="nav-link">Quiz</router-link>
+        <router-link to="/community" class="nav-link">Community</router-link>
         <router-link to="/about" class="nav-link">About</router-link>
       </nav>
 

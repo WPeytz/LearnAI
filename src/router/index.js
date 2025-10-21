@@ -3,6 +3,8 @@ import HomePage from '../views/HomePage.vue';
 import ArticlesPage from '../views/ArticlesPage.vue';
 import ArticleDetailPage from '../views/ArticleDetailPage.vue';
 import AboutPage from '../views/AboutPage.vue';
+import QuizPage from '../views/QuizPage.vue';
+import CommunityPage from '../views/CommunityPage.vue';
 
 const routes = [
   {
@@ -28,6 +30,18 @@ const routes = [
     name: 'About',
     component: AboutPage,
     meta: { title: 'About - LearnAI' }
+  },
+  {
+    path: '/quiz',
+    name: 'Quiz',
+    component: QuizPage,
+    meta: { title: 'AI Quizzes - LearnAI' }
+  },
+  {
+    path: '/community',
+    name: 'Community',
+    component: CommunityPage,
+    meta: { title: 'Community - LearnAI' }
   },
   {
     path: '/:pathMatch(.*)*',

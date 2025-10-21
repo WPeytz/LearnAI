@@ -3,7 +3,7 @@
     <div class="about-page">
       <div class="page-header">
         <div class="container">
-          <h1>About Learn<span class="highlight">AI</span></h1>
+          <h1>About LearnAI</h1>
           <p>Empowering minds through AI education</p>
         </div>
       </div>
